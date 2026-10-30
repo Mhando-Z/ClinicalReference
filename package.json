@@ -1,0 +1,29 @@
+{
+  "name": "clinical-reference",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --hostname 127.0.0.1",
+    "build": "next build",
+    "start": "node scripts/serve.mjs",
+    "extract": "python extractor.py",
+    "test:extractor": "python -m unittest discover -s tests -v",
+    "test:browser": "playwright test",
+    "verify:export": "node scripts/verify-export.mjs",
+    "test:markdown": "node --test tests/markdown.test.mjs"
+  },
+  "dependencies": {
+    "framer-motion": "latest",
+    "lucide-react": "latest",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-markdown": "^10.1.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.1",
+    "@tailwindcss/postcss": "latest",
+    "postcss": "latest",
+    "tailwindcss": "latest"
+  }
+}

@@ -10,7 +10,8 @@
     "test:extractor": "python -m unittest discover -s tests -v",
     "test:browser": "playwright test",
     "verify:export": "node scripts/verify-export.mjs",
-    "test:markdown": "node --test tests/markdown.test.mjs"
+    "test:markdown": "node --test tests/markdown.test.mjs",
+    "test:search": "node --test tests/search.test.mjs"
   },
   "dependencies": {
     "framer-motion": "latest",

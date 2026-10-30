@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
 import { initializeTheme } from "../lib/theme.mjs";
+import { iconButton } from "../lib/ui.mjs";
 
 export default function ThemeToggle() {
   const [dark, setDark] = useState(false);
@@ -34,14 +35,13 @@ export default function ThemeToggle() {
   return (
     <button
       type="button"
-      className="icon-button theme-toggle"
+      className={iconButton}
       aria-label="Dark theme"
       aria-pressed={dark}
       title={dark ? "Switch to light theme" : "Switch to dark theme"}
       onClick={toggleTheme}
     >
-      <Moon className="theme-icon-moon" size={19} />
-      <Sun className="theme-icon-sun" size={19} />
+      {dark ? <Sun size={18} /> : <Moon size={18} />}
     </button>
   );
 }

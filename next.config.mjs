@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 
 const nextConfig = {
   output: "export",
+  trailingSlash: true,
   images: { unoptimized: true },
   turbopack: { root: path.dirname(fileURLToPath(import.meta.url)) },
 };

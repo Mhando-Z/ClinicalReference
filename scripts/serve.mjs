@@ -31,18 +31,30 @@ const server = http.createServer((req, res) => {
       res.writeHead(405);
       return res.end();
     }
-    const pathname = decodeURIComponent(
-      new URL(req.url, "http://localhost").pathname,
-    );
+    const requestUrl = new URL(req.url, "http://localhost");
+    const pathname = decodeURIComponent(requestUrl.pathname);
     let filename = path.resolve(root, "." + pathname);
     const relative = path.relative(root, filename);
     if (relative.startsWith("..") || path.isAbsolute(relative)) {
       res.writeHead(403);
       return res.end();
     }
-    if (fs.existsSync(filename) && fs.statSync(filename).isDirectory())
+    if (fs.existsSync(filename) && fs.statSync(filename).isDirectory()) {
+      if (!pathname.endsWith("/")) {
+        res.writeHead(308, {
+          Location: `${requestUrl.pathname}/${requestUrl.search}`,
+        });
+        return res.end();
+      }
       filename = path.join(filename, "index.html");
+    }
     if (!fs.existsSync(filename) || !fs.statSync(filename).isFile()) {
+      const notFound = path.join(root, "404.html");
+      if (fs.existsSync(notFound)) {
+        res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
+        if (req.method === "HEAD") return res.end();
+        return fs.createReadStream(notFound).pipe(res);
+      }
       res.writeHead(404);
       return res.end("Not found");
     }

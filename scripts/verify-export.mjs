@@ -15,7 +15,7 @@ assert.ok(
   html.includes("Guidelines, made accessible"),
   "Library is pre-rendered",
 );
-assert.equal(catalog.sections.length, 341);
+assert.equal(catalog.sections.length, 751);
 assert.equal(catalog.chapters.length, 28);
 assert.equal(new Set(catalog.chapters.map((c) => c.id)).size, 28);
 assert.equal(search.length, catalog.sections.length);

@@ -146,7 +146,7 @@ test("chapter directory, source details, tables, and legacy section links work",
   await expect(
     page.getByRole("heading", { name: /One document/ }),
   ).toBeVisible();
-  await expect(page.getByRole("main")).toContainText("341 sections");
+  await expect(page.getByRole("main")).toContainText("751 sections");
   await page.goto("/sections/section-body-00415/");
   await expect(page.getByRole("table").first()).toBeVisible();
   await page.screenshot({

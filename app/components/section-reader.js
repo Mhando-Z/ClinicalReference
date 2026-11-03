@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useWorkspace } from "./workspace-provider";
 import SourceContent from "./source-content";
+import { articleBreadcrumb } from "../lib/taxonomy.mjs";
 import {
   button,
   chapterHref,
@@ -192,21 +193,34 @@ export default function SectionReader({ section }) {
           className={`${panel} min-w-0 px-5 py-7 sm:px-9 sm:py-9 print:border-0 print:bg-white print:p-0 print:text-black`}
         >
           <header className="border-b border-slate-200 pb-6 dark:border-slate-700">
-            <div className={`${eyebrow} flex items-center gap-2`}>
-              <Link
-                href={chapterHref(chapter.id)}
-                className="text-teal-700 hover:underline dark:text-teal-400"
-              >
-                {chapter.label}
-              </Link>
-              <ChevronRight size={12} />
-              <span>Source text</span>
-            </div>
+            <nav
+              aria-label="Clinical breadcrumb"
+              className={`${eyebrow} flex flex-wrap items-center gap-2`}
+            >
+              {articleBreadcrumb(entry, chapter).map((label, index, path) =>
+                index === 0 ? (
+                  <Link
+                    key={`${label}-${index}`}
+                    href={chapterHref(chapter.id)}
+                    className="text-teal-700 hover:underline dark:text-teal-400"
+                  >
+                    {label}
+                  </Link>
+                ) : (
+                  <span key={`${label}-${index}`} className="flex items-center gap-2">
+                    <ChevronRight size={12} />
+                    <span className={index === path.length - 1 ? "text-slate-700 dark:text-slate-200" : "text-slate-400"}>
+                      {label}
+                    </span>
+                  </span>
+                ),
+              )}
+            </nav>
             <h1 className="mt-4 text-3xl leading-tight font-semibold tracking-[-0.03em] text-slate-900 sm:text-4xl dark:text-slate-50 print:text-black">
               {entry.title}
             </h1>
             <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">
-              {chapter.title}
+              {chapter.label} · {chapter.title} · Source text
             </p>
             <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] text-slate-400">
               <span className="flex items-center gap-1.5">

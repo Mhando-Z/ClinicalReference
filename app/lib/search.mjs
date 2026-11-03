@@ -4,6 +4,33 @@ export const searchTerms = (query) => [
   ...new Set(normalize(query).split(" ").filter(Boolean)),
 ];
 
+export function searchSuggestions({ sections, chapters, query, limit = 6 }) {
+  const terms = searchTerms(query);
+  if (!terms.length) return [];
+  const chapterMap = Object.fromEntries(
+    chapters.map((item) => [item.id, item]),
+  );
+  return sections
+    .map((entry, order) => {
+      const chapter = chapterMap[entry.chapterId];
+      const title = normalize(entry.title);
+      const text = normalize(`${entry.title} ${chapter?.title || ""}`);
+      if (!terms.every((term) => text.includes(term))) return null;
+      const score =
+        (title === normalize(query) ? 100 : 0) +
+        terms.reduce(
+          (total, term) =>
+            total + (title.startsWith(term) ? 20 : 0) +
+            (title.includes(term) ? 10 : 0),
+          0,
+        );
+      return { entry, chapter, score, order };
+    })
+    .filter(Boolean)
+    .sort((a, b) => b.score - a.score || a.order - b.order)
+    .slice(0, limit);
+}
+
 export function findSections({
   sections,
   chapters,

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
   ArrowDownToLine,
@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import ThemeToggle from "./theme-toggle";
 import { useWorkspace } from "./workspace-provider";
+import { searchSuggestions } from "../lib/search.mjs";
 import { chapterHref, eyebrow, iconButton, sectionHref } from "../lib/ui.mjs";
 
 const shortcuts = [
@@ -40,6 +41,14 @@ export default function AppShell({ children }) {
   const { catalog, bookmarks, storageError } = useWorkspace();
   const menuRef = useRef(null);
   const menuTrigger = useRef(null);
+  const globalSearchRef = useRef(null);
+  const [globalQuery, setGlobalQuery] = useState("");
+  const [globalSearchFocused, setGlobalSearchFocused] = useState(false);
+  const [activeGlobalSuggestion, setActiveGlobalSuggestion] = useState(-1);
+  const globalSuggestions = useMemo(
+    () => searchSuggestions({ ...catalog, query: globalQuery }),
+    [catalog, globalQuery],
+  );
   useEffect(() => {
     menuRef.current?.close();
   }, [pathname]);
@@ -52,6 +61,22 @@ export default function AppShell({ children }) {
       );
     }
   }, [pathname, catalog, router]);
+  useEffect(() => {
+    setGlobalQuery(new URLSearchParams(window.location.search).get("q") || "");
+  }, [pathname]);
+  useEffect(() => {
+    const handler = (event) => {
+      const editing =
+        ["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName) ||
+        event.target.isContentEditable;
+      if (!editing && event.key === "/") {
+        event.preventDefault();
+        globalSearchRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
   const links = [
     ["/", "Guideline library", Library],
     ["/chapters/", "All chapters", FolderOpen],
@@ -70,6 +95,22 @@ export default function AppShell({ children }) {
     entry?.title ||
     links.find(([href]) => href === pathname)?.[1] ||
     "Clinical Reference";
+  const librarySearchPage =
+    pathname === "/" ||
+    pathname === "/saved/" ||
+    pathname === "/recent/" ||
+    (pathname.startsWith("/chapters/") && pathname !== "/chapters/");
+  function submitGlobalSearch(event) {
+    event.preventDefault();
+    const value = globalQuery.trim();
+    router.push(value ? `/?q=${encodeURIComponent(value)}#library-search` : "/#library-search");
+  }
+  function chooseGlobalSuggestion(suggestion) {
+    const value = suggestion.entry.title;
+    setGlobalQuery(value);
+    setGlobalSearchFocused(false);
+    router.push(`/?q=${encodeURIComponent(value)}#library-search`);
+  }
   function Navigation() {
     return (
       <div className="flex h-full flex-col">
@@ -231,13 +272,98 @@ export default function AppShell({ children }) {
             {/* <span className="mr-2 hidden rounded-md border border-teal-100 bg-teal-50 px-2.5 py-1 text-[10px] font-semibold tracking-wide text-teal-700 sm:block dark:border-teal-900 dark:bg-teal-950 dark:text-teal-300">
               2026 EDITION
             </span> */}
-            <Link
-              href="/#library-search"
-              aria-label="Go to search"
-              className={iconButton}
-            >
-              <Search size={18} />
-            </Link>
+            {librarySearchPage ? (
+              <Link
+                href="/#library-search"
+                aria-label="Go to search"
+                className={iconButton}
+              >
+                <Search size={18} />
+              </Link>
+            ) : (
+              <>
+                <form
+                  role="search"
+                  onSubmit={submitGlobalSearch}
+                  className="relative hidden h-10 w-64 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 shadow-xs focus-within:border-teal-400 focus-within:ring-2 focus-within:ring-teal-600/10 sm:flex dark:border-slate-700 dark:bg-slate-900"
+                >
+                  <Search
+                    size={17}
+                    className="shrink-0 text-teal-700 dark:text-teal-400"
+                  />
+                  <input
+                    ref={globalSearchRef}
+                    type="search"
+                    aria-label="Search guidelines by condition, medicine, or keyword"
+                    aria-autocomplete="list"
+                    aria-controls="global-search-suggestions"
+                    aria-expanded={globalSearchFocused && globalSuggestions.length > 0}
+                    value={globalQuery}
+                    onChange={(event) => {
+                      setGlobalQuery(event.target.value);
+                      setActiveGlobalSuggestion(-1);
+                    }}
+                    onFocus={() => setGlobalSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setGlobalSearchFocused(false), 100)}
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowDown" && globalSuggestions.length) {
+                        event.preventDefault();
+                        setActiveGlobalSuggestion((value) =>
+                          value < globalSuggestions.length - 1 ? value + 1 : 0,
+                        );
+                      }
+                      if (event.key === "ArrowUp" && globalSuggestions.length) {
+                        event.preventDefault();
+                        setActiveGlobalSuggestion((value) =>
+                          value > 0 ? value - 1 : globalSuggestions.length - 1,
+                        );
+                      }
+                      if (event.key === "Enter" && activeGlobalSuggestion >= 0) {
+                        event.preventDefault();
+                        chooseGlobalSuggestion(globalSuggestions[activeGlobalSuggestion]);
+                      }
+                    }}
+                    placeholder="Search a condition, medicine, or keyword…"
+                    className="h-full min-w-0 flex-1 bg-transparent text-xs text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100 [&::-webkit-search-cancel-button]:appearance-none"
+                  />
+                  {!globalQuery && (
+                    <kbd className="rounded border border-slate-200 bg-slate-50 px-1.5 py-0.5 font-sans text-[10px] text-slate-400 dark:border-slate-700 dark:bg-slate-800">
+                      /
+                    </kbd>
+                  )}
+                  {globalSearchFocused && globalSuggestions.length > 0 && (
+                    <div
+                      id="global-search-suggestions"
+                      role="listbox"
+                      aria-label="Search suggestions"
+                      className="absolute top-full left-0 z-30 mt-2 hidden w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg sm:block dark:border-slate-700 dark:bg-slate-900"
+                    >
+                      {globalSuggestions.map((suggestion, index) => (
+                        <button
+                          key={suggestion.entry.id}
+                          type="button"
+                          role="option"
+                          aria-selected={activeGlobalSuggestion === index}
+                          onMouseDown={(event) => event.preventDefault()}
+                          onClick={() => chooseGlobalSuggestion(suggestion)}
+                          className={`block w-full rounded-md px-3 py-2 text-left text-xs ${activeGlobalSuggestion === index ? "bg-teal-50 text-teal-800 dark:bg-teal-950 dark:text-teal-200" : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"}`}
+                        >
+                          <span className="block truncate font-medium">{suggestion.entry.title}</span>
+                          <span className="mt-0.5 block truncate text-[10px] text-slate-400">{suggestion.chapter?.title}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </form>
+                <Link
+                  href="/#library-search"
+                  aria-label="Go to search"
+                  className={`${iconButton} sm:hidden`}
+                >
+                  <Search size={18} />
+                </Link>
+              </>
+            )}
             <ThemeToggle />
             <span className="ml-2 hidden size-8 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[10px] font-semibold text-slate-500 sm:flex dark:border-slate-700 dark:bg-slate-800">
               TZ

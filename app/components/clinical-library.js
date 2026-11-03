@@ -27,7 +27,8 @@ import {
 } from "lucide-react";
 import { useWorkspace } from "./workspace-provider";
 import Highlight from "./highlight";
-import { findSections, searchExcerpt } from "../lib/search.mjs";
+import { findSections, searchExcerpt, searchSuggestions } from "../lib/search.mjs";
+import { articleBreadcrumb, specialtyFor } from "../lib/taxonomy.mjs";
 import {
   button,
   chapterHref,
@@ -62,6 +63,8 @@ export default function ClinicalLibrary({
   const [index, setIndex] = useState(null);
   const [searchError, setSearchError] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [activeSuggestion, setActiveSuggestion] = useState(-1);
   const inputRef = useRef(null);
   const resultsRef = useRef(null);
   const chapterMap = useMemo(
@@ -69,7 +72,12 @@ export default function ClinicalLibrary({
     [chapters],
   );
   const activeChapter = chapterId !== "all" ? chapterMap[chapterId] : null;
+  const activeSpecialty = specialtyFor(activeChapter);
   const hasQuery = Boolean(deferredQuery.trim());
+  const suggestions = useMemo(
+    () => searchSuggestions({ sections, chapters, query }),
+    [sections, chapters, query],
+  );
 
   useEffect(() => {
     function readUrl() {
@@ -220,6 +228,12 @@ export default function ClinicalLibrary({
   function updateQuery(value) {
     setQuery(value);
     setPage(1);
+    setActiveSuggestion(-1);
+  }
+  function chooseSuggestion(suggestion) {
+    updateQuery(suggestion.entry.title);
+    setSearchFocused(false);
+    inputRef.current?.focus();
   }
   function reset() {
     setQuery("");
@@ -257,12 +271,20 @@ export default function ClinicalLibrary({
     <>
       <header className="mb-7">
         {activeChapter ? (
-          <Link
-            href="/chapters/"
-            className="mb-5 inline-flex items-center gap-2 text-xs text-slate-500 hover:text-teal-700"
+          <nav
+            aria-label="Clinical breadcrumb"
+            className="mb-5 flex flex-wrap items-center gap-2 text-xs text-slate-500"
           >
-            <ArrowLeft size={14} /> All chapters
-          </Link>
+            <Link href="/chapters/" className="hover:text-teal-700">
+              All specialties
+            </Link>
+            <ChevronRight size={13} className="text-slate-300" />
+            <span className="font-medium text-teal-700 dark:text-teal-400">
+              {activeSpecialty}
+            </span>
+            <ChevronRight size={13} className="text-slate-300" />
+            <span className="text-slate-400">{activeChapter.label}</span>
+          </nav>
         ) : (
           <div className={`${eyebrow} mb-3 flex items-center gap-2.5`}>
             <span className="size-1.5 rounded-full bg-teal-600" />
@@ -331,7 +353,8 @@ export default function ClinicalLibrary({
         aria-label="Search and filters"
         className={`${panel} mb-7 overflow-hidden shadow-xs focus-within:border-teal-400 focus-within:ring-2 focus-within:ring-teal-600/10`}
       >
-        <div className="flex items-center gap-3 px-4 sm:gap-4 sm:px-5">
+        <div className="relative">
+          <div className="flex items-center gap-3 px-4 sm:gap-4 sm:px-5">
           <Search
             size={22}
             className="shrink-0 text-teal-700 dark:text-teal-400"
@@ -342,8 +365,31 @@ export default function ClinicalLibrary({
             id="library-search"
             aria-label="Search guidelines by condition, medicine, or keyword"
             aria-describedby="search-help"
+            aria-autocomplete="list"
+            aria-controls="search-suggestions"
+            aria-expanded={searchFocused && suggestions.length > 0}
             value={query}
             onChange={(event) => updateQuery(event.target.value)}
+            onFocus={() => setSearchFocused(true)}
+            onBlur={() => setTimeout(() => setSearchFocused(false), 100)}
+            onKeyDown={(event) => {
+              if (event.key === "ArrowDown" && suggestions.length) {
+                event.preventDefault();
+                setActiveSuggestion((value) =>
+                  value < suggestions.length - 1 ? value + 1 : 0,
+                );
+              }
+              if (event.key === "ArrowUp" && suggestions.length) {
+                event.preventDefault();
+                setActiveSuggestion((value) =>
+                  value > 0 ? value - 1 : suggestions.length - 1,
+                );
+              }
+              if (event.key === "Enter" && activeSuggestion >= 0) {
+                event.preventDefault();
+                chooseSuggestion(suggestions[activeSuggestion]);
+              }
+            }}
             placeholder={
               view === "saved"
                 ? "Search your saved sections…"
@@ -366,6 +412,30 @@ export default function ClinicalLibrary({
             <kbd className="hidden rounded border border-slate-200 bg-slate-50 px-2 py-1 font-sans text-[11px] text-slate-400 sm:block dark:border-slate-700 dark:bg-slate-800">
               /
             </kbd>
+          )}
+          </div>
+          {searchFocused && suggestions.length > 0 && (
+            <div
+              id="search-suggestions"
+              role="listbox"
+              aria-label="Search suggestions"
+              className="absolute top-full right-0 left-0 z-10 mt-2 overflow-hidden rounded-lg border border-slate-200 bg-white p-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
+            >
+              {suggestions.map((suggestion, index) => (
+                <button
+                  key={suggestion.entry.id}
+                  type="button"
+                  role="option"
+                  aria-selected={activeSuggestion === index}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => chooseSuggestion(suggestion)}
+                  className={`block w-full rounded-md px-3 py-2 text-left text-xs ${activeSuggestion === index ? "bg-teal-50 text-teal-800 dark:bg-teal-950 dark:text-teal-200" : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"}`}
+                >
+                  <span className="block truncate font-medium">{suggestion.entry.title}</span>
+                  <span className="mt-0.5 block truncate text-[10px] text-slate-400">{suggestion.chapter?.title}</span>
+                </button>
+              ))}
+            </div>
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 bg-slate-50/60 px-4 py-3 sm:px-5 dark:border-slate-800 dark:bg-slate-800/30">
@@ -641,7 +711,7 @@ export default function ClinicalLibrary({
                 const saved = bookmarks.includes(entry.id);
                 const chapterEntry = chapterMap[entry.chapterId];
                 return (
-                  <article
+                    <article
                     key={entry.id}
                     data-testid="section-card"
                     className={`${panel} group relative flex min-w-0 flex-col transition hover:border-teal-300 hover:shadow-sm ${layout === "list" ? "sm:flex-row sm:items-center" : ""}`}
@@ -650,16 +720,31 @@ export default function ClinicalLibrary({
                       href={`${sectionHref(entry.id)}${readerQuery}`}
                       className={`block min-w-0 flex-1 p-5 pb-4 focus-visible:rounded-xl focus-visible:outline-2 focus-visible:outline-teal-600 ${layout === "list" ? "sm:py-5" : ""}`}
                     >
-                      <div className="mb-3 flex items-center gap-2 pr-8">
-                        <span
-                          className={`rounded-md px-2 py-1 text-[9px] font-semibold tracking-wide ${entry.chapterId === "reference" ? "bg-amber-50 text-amber-700 dark:bg-amber-950 dark:text-amber-300" : "bg-teal-50 text-teal-700 dark:bg-teal-950 dark:text-teal-300"}`}
-                        >
-                          {chapterEntry.label}
-                        </span>
-                        <span className="truncate text-[10px] text-slate-400">
-                          {chapterEntry.title}
-                        </span>
-                      </div>
+                      <nav
+                        aria-label={`${specialtyFor(chapterEntry)} breadcrumb`}
+                        className="mb-3 flex min-w-0 items-center gap-2 pr-8 text-[10px]"
+                      >
+                        {articleBreadcrumb(entry, chapterEntry).map(
+                          (label, index, path) => (
+                            <span
+                              key={`${entry.id}-${label}-${index}`}
+                              className="flex min-w-0 items-center gap-2"
+                            >
+                              {index > 0 && (
+                                <ChevronRight
+                                  size={12}
+                                  className="shrink-0 text-slate-300"
+                                />
+                              )}
+                              <span
+                                className={`truncate ${index === 0 ? "font-semibold text-teal-700 dark:text-teal-400" : index === path.length - 1 ? "text-slate-600 dark:text-slate-300" : "text-slate-400"}`}
+                              >
+                                {label}
+                              </span>
+                            </span>
+                          ),
+                        )}
+                      </nav>
                       <h3 className="pr-3 text-[15px] leading-6 font-semibold tracking-tight text-slate-800 group-hover:text-teal-800 dark:text-slate-100 dark:group-hover:text-teal-300">
                         <Highlight text={entry.title} query={deferredQuery} />
                       </h3>
@@ -672,6 +757,10 @@ export default function ClinicalLibrary({
                         />
                       </p>
                       <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 text-[10px] text-slate-400">
+                        <span className="flex items-center gap-1">
+                          <BookOpen size={12} />
+                          {chapterEntry.label} · {chapterEntry.title}
+                        </span>
                         <span className="flex items-center gap-1">
                           <Clock3 size={12} />
                           {readingTime(entry.wordCount)}

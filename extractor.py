@@ -123,8 +123,10 @@ class Extractor:
         self.counts["contentParagraphs"] += 1
         heading = re.fullmatch(r"Heading(\d+)", style, re.I)
         block = {"id": source_id, "type": "heading" if heading else "paragraph", "style": style, "text": text, "runs": runs}
-        if style.upper().startswith("TOC"):
+        toc = re.fullmatch(r"TOC(\d+)", style, re.I)
+        if toc:
             block["contentsEntry"] = True
+            block["contentsLevel"] = int(toc.group(1))
         if heading:
             block["level"] = int(heading.group(1))
         if text.strip().upper() in ("AND", "OR", "AND/OR", "PLUS"):
@@ -207,13 +209,75 @@ def chapter_match(text):
     return CHAPTER.match(normalized) if normalized.startswith("CHAPTER ") else None
 
 
+def toc_title(text):
+    return re.sub(r"\s*\t.*$", "", text.strip())
+
+
+def title_key(text):
+    return re.sub(r"[\s.:;]+$", "", re.sub(r"\s+", " ", text.strip())).casefold()
+
+
+def compact_title(text):
+    return re.sub(r"[^\w]+", "", text.casefold(), flags=re.UNICODE)
+
+
+def matches_toc_heading(heading, entry):
+    heading_key = compact_title(heading)
+    entry_key = compact_title(entry)
+    if not heading_key or not entry_key:
+        return False
+    return (
+        heading_key == entry_key
+        or heading_key.startswith(entry_key)
+        or entry_key.startswith(heading_key)
+    )
+
+
 def build_sections(blocks):
     chapters = [{"id": "reference", "label": "Reference", "title": "Introduction & essential medicines"}]
     chapter = chapters[0]
     sections = []
     current = None
     awaiting_title = False
-    for block in blocks:
+    toc_blocks = [block for block in blocks if block.get("contentsEntry")]
+    body = [block for block in blocks if not block.get("contentsEntry")]
+
+    toc_entries = [
+        {
+            "level": block["contentsLevel"],
+            "title": toc_title(block.get("text", "")),
+        }
+        for block in blocks
+        if block.get("contentsEntry") and block.get("contentsLevel")
+    ]
+    deepest_level = max((entry["level"] for entry in toc_entries), default=0)
+    toc_stack = []
+    deepest_entries = []
+    for entry in toc_entries:
+        toc_stack = toc_stack[: entry["level"] - 1]
+        entry["parents"] = list(toc_stack)
+        toc_stack.append(entry["title"])
+        if entry["level"] == deepest_level:
+            deepest_entries.append(entry)
+
+    used_entries = set()
+    targets = []
+    for index, block in enumerate(body):
+        if block["type"] != "heading":
+            continue
+        for entry_index, entry in enumerate(deepest_entries):
+            if entry_index not in used_entries and matches_toc_heading(
+                block.get("text", ""), entry["title"]
+            ):
+                targets.append((index, entry))
+                used_entries.add(entry_index)
+                break
+
+    using_deepest = bool(targets)
+    target_by_index = {index: entry for index, entry in targets}
+    started_deepest = False
+    processing_blocks = body if using_deepest else blocks
+    for index, block in enumerate(processing_blocks):
         match = chapter_match(block.get("text", "")) if block["type"] != "table" and not block.get("contentsEntry") else None
         if match:
             chapter = {"id": "chapter-" + match.group(1).lower(), "label": "Chapter " + match.group(1).title(), "title": match.group(2).strip().capitalize() or "Chapter " + match.group(1).title()}
@@ -222,15 +286,27 @@ def build_sections(blocks):
             current = None
         elif awaiting_title and block.get("text", "").strip():
             chapter["title"] = block["text"].strip().capitalize()
-            if current:
-                current["title"] = chapter["title"]
             awaiting_title = False
-        is_topic = block["type"] == "heading" and block.get("level") == 2
-        if current is None or is_topic:
-            title = block.get("text", "").strip() if is_topic else (chapter["title"] if chapter["id"] != "reference" else "Document introduction")
+
+        toc_entry = target_by_index.get(index) if using_deepest else None
+        if toc_entry:
+            current = {
+                "id": "section-" + block["id"],
+                "title": block["text"].strip(),
+                "chapterId": chapter["id"],
+                "tocLevel": deepest_level,
+                "tocPath": [*toc_entry["parents"], toc_entry["title"]],
+                "blocks": [],
+            }
+            sections.append(current)
+            started_deepest = True
+        elif current is None or (not started_deepest and block["type"] == "heading" and block.get("level") == 2):
+            title = block.get("text", "").strip() if block["type"] == "heading" and block.get("level") == 2 else (chapter["title"] if chapter["id"] != "reference" else "Document introduction")
             current = {"id": "section-" + block["id"], "title": title, "chapterId": chapter["id"], "blocks": []}
             sections.append(current)
         current["blocks"].append(block)
+    if using_deepest and toc_blocks and sections:
+        sections[0]["blocks"][0:0] = toc_blocks
     return chapters, sections
 
 
